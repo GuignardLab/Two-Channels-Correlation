@@ -8,9 +8,12 @@ import numpy as np
 from pathlib import Path
 from tifffile import imread, imwrite
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from skimage.filters import threshold_otsu
 from scipy.ndimage import gaussian_filter1d, gaussian_filter
 from scipy.stats import pearsonr, spearmanr
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 import argparse
 
 
@@ -71,6 +74,7 @@ def compute_correlation(
     perc_membrane: int = 3,
     sigma_int_smooth: int = 1,
     output: Path = None,
+    fig_ext: str = "pdf",
 ):
     """Compute the correlation between two channels.
 
@@ -119,6 +123,13 @@ def compute_correlation(
     print(f"Spearman correlation: {S:.2e}, p-val:{e_s:.2e}")
     print(f"Pearson correlation: {R:.2e}, p-val:{e_r:.2e}")
 
+    n_components = 2
+    data = np.array(list(zip(C1_filtered[membranes], C2_filtered[membranes])))
+    gmm = GaussianMixture(n_components=n_components, random_state=0).fit(data)
+    # pred = gmm.predict(data)
+    # prob = gmm.predict_proba(data)
+    # prob_alpha = np.take_along_axis(prob, pred[:, None], axis=1).flatten()
+
     fig, ax = plt.subplots(figsize=(8, 8))
     min_r = np.percentile(
         np.hstack([C1_filtered[membranes], C2_filtered[membranes]]), 0.05
@@ -134,13 +145,36 @@ def compute_correlation(
         cmap="magma",
         range=(range_hist, range_hist),
     )
+    # ax.scatter(
+    #     C1_filtered[membranes],
+    #     C2_filtered[membranes],
+    #     c=pred,
+    #     alpha=prob_alpha,
+    #     cmap="viridis",
+    #     s=.5,
+    # )
     ax.set_xlabel("C2 intensity")
     ax.set_ylabel("C3 intensity")
+
+    colors = ["white", "lightgreen"]
+    for n in range(n_components):
+        covariances = gmm.covariances_[n][:2, :2]
+        v, w = np.linalg.eigh(covariances)
+        u = w[0] / np.linalg.norm(w[0])
+        angle = np.arctan2(u[1], u[0])
+        angle = 180 * angle / np.pi  # convert to degrees
+        v = 2.0 * np.sqrt(2.0) * np.sqrt(v)
+        ell = mpl.patches.Ellipse(
+            gmm.means_[n, :2], v[0], v[1], angle=180 + angle, edgecolor = colors[n],fill=False,linewidth=5,
+        )
+        ell.set_clip_box(ax.bbox)
+        ell.set_alpha(0.5)
+        ax.add_artist(ell)
+        ax.set_aspect("equal", "datalim")
     fig.tight_layout()
-    ax.axis("equal")
 
     if output is not None:
-        fig.savefig(output / "hist2d_plot.svg")
+        fig.savefig(output / f"hist2d_plot.{fig_ext}")
     if plot:
         plt.show()
 
@@ -286,6 +320,13 @@ def run_all():
         help="Path to the output folder for the plot.",
         default=".",
     )
+    parser.add_argument(
+        "-fig-ext",
+        "--figure_extension",
+        type=str,
+        help="Extension for the figure. (pdf, svg, png, etc.)",
+        default="pdf",
+    )
 
     args = parser.parse_args()
 
@@ -303,6 +344,7 @@ def run_all():
     perc_membrane = args.perc_membrane
     sigma_int_smooth = args.sigma_int_smooth
     output = Path(args.output)
+    fig_ext = args.figure_extension
 
     C0, C1, C2 = prep_data(folder_path, p_im_c0=p_im_c0, p_im_c1=p_im_c1, p_im_c2=p_im_c2, im_all=p_im, czyx=czyx)
 
@@ -318,4 +360,5 @@ def run_all():
         perc_membrane=perc_membrane,
         sigma_int_smooth=sigma_int_smooth,
         output=output,
+        fig_ext=fig_ext,
     )

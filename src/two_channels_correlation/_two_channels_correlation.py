@@ -165,7 +165,7 @@ def compute_correlation(
         angle = 180 * angle / np.pi  # convert to degrees
         v = 2.0 * np.sqrt(2.0) * np.sqrt(v)
         ell = mpl.patches.Ellipse(
-            gmm.means_[n, :2], v[0], v[1], angle=180 + angle, edgecolor = colors[n],fill=False,linewidth=5,
+            gmm.means_[n, :2], v[0], v[1], angle=180 + angle, edgecolor = colors[n%2],fill=False,linewidth=5,
         )
         ell.set_clip_box(ax.bbox)
         ell.set_alpha(0.5)
